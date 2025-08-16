@@ -7,9 +7,22 @@ export class InputManager {
   private mousePressed: boolean = false;
   private mouseJustPressed: boolean = false;
   private canvas: HTMLCanvasElement;
+  private isTouchDevice: boolean = false;
+  private touchStartTime: number = 0;
+  private lastTouchEnd: number = 0;
+  private touchMoved: boolean = false;
+  private touchStartPosition: Vector2 = new Vector2(0, 0);
+  private touchMoveThreshold: number = 10; // Pixels before considering it a move
+  private multiTouchPrevented: boolean = false;
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    this.detectTouchDevice();
     this.setupEventListeners();
+  }
+
+  private detectTouchDevice(): void {
+    this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    console.log(`Touch device detected: ${this.isTouchDevice}`);
   }
 
   private setupEventListeners(): void {
@@ -35,25 +48,79 @@ export class InputManager {
       this.updateMousePosition(event.clientX, event.clientY);
     });
 
-    // Touch events for mobile support
+    // Enhanced touch events for mobile support
     this.canvas.addEventListener('touchstart', (event) => {
       event.preventDefault();
+      
+      // Prevent multi-touch gestures that could interfere with gameplay
+      if (event.touches.length > 1) {
+        this.multiTouchPrevented = true;
+        return;
+      }
+      
+      this.multiTouchPrevented = false;
+      
       if (event.touches.length > 0) {
         const touch = event.touches[0];
+        this.touchStartTime = Date.now();
+        this.touchMoved = false;
+        this.touchStartPosition.set(touch.clientX, touch.clientY);
         this.handlePointerDown(touch.clientX, touch.clientY);
       }
-    });
+    }, { passive: false });
 
     this.canvas.addEventListener('touchend', (event) => {
       event.preventDefault();
+      
+      if (this.multiTouchPrevented) {
+        this.multiTouchPrevented = false;
+        return;
+      }
+      
+      const touchEndTime = Date.now();
+      
+      // Prevent double-tap zoom on mobile
+      if (touchEndTime - this.lastTouchEnd < 300) {
+        event.preventDefault();
+      }
+      this.lastTouchEnd = touchEndTime;
+      
+      // Only register as click if touch didn't move much and was quick
+      const touchDuration = touchEndTime - this.touchStartTime;
+      if (!this.touchMoved && touchDuration < 500) {
+        // This was a tap, not a drag - the click is already registered in touchstart
+      }
+      
       this.mousePressed = false;
-    });
+    }, { passive: false });
 
     this.canvas.addEventListener('touchmove', (event) => {
       event.preventDefault();
-      if (event.touches.length > 0) {
-        const touch = event.touches[0];
-        this.updateMousePosition(touch.clientX, touch.clientY);
+      
+      if (this.multiTouchPrevented || event.touches.length === 0) {
+        return;
+      }
+      
+      const touch = event.touches[0];
+      
+      // Calculate distance moved from start position
+      const moveDistance = Math.sqrt(
+        Math.pow(touch.clientX - this.touchStartPosition.x, 2) + 
+        Math.pow(touch.clientY - this.touchStartPosition.y, 2)
+      );
+      
+      // Only consider it moved if beyond threshold
+      if (moveDistance > this.touchMoveThreshold) {
+        this.touchMoved = true;
+      }
+      
+      this.updateMousePosition(touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    // Prevent context menu on long press
+    this.canvas.addEventListener('contextmenu', (event) => {
+      if (this.isTouchDevice) {
+        event.preventDefault();
       }
     });
   }
@@ -94,6 +161,16 @@ export class InputManager {
     const result = this.mouseJustPressed;
     this.mouseJustPressed = false;
     return result;
+  }
+
+  // Check if this is a touch device
+  isTouch(): boolean {
+    return this.isTouchDevice;
+  }
+
+  // Get touch-friendly position with larger hit area
+  getTouchPosition(): Vector2 {
+    return this.mousePosition.clone();
   }
 
   // Update method to be called each frame

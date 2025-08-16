@@ -11,6 +11,8 @@ import { AssetManager } from './core/AssetManager.ts';
 import { Animation } from './core/Animation.ts';
 import { VisualEffects } from './core/VisualEffects.ts';
 import { HUD } from './ui/HUD.ts';
+import { MobileUI } from './ui/MobileUI.ts';
+import { AccessibilityManager } from './managers/AccessibilityManager.ts';
 import { PerformanceMonitor, PerformanceLevel } from './core/PerformanceMonitor.ts';
 
 class Game {
@@ -47,6 +49,8 @@ class Game {
   private assetManager!: AssetManager;
   private visualEffects!: VisualEffects;
   private hud!: HUD;
+  private mobileUI!: MobileUI;
+  private accessibilityManager!: AccessibilityManager;
   private performanceMonitor!: PerformanceMonitor;
 
   constructor() {
@@ -77,9 +81,47 @@ class Game {
   }
 
   private setupCanvas(): void {
-    // Get viewport dimensions
-    const viewportWidth = Math.min(window.innerWidth - 40, 800);
-    const viewportHeight = Math.min(window.innerHeight - 120, 600);
+    // Get viewport dimensions with mobile-friendly sizing
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                     window.innerWidth <= 768;
+    
+    let viewportWidth: number;
+    let viewportHeight: number;
+    
+    if (isMobile) {
+      // On mobile, use more of the screen space and account for safe areas
+      const safeAreaTop = this.getSafeAreaInset('top');
+      const safeAreaBottom = this.getSafeAreaInset('bottom');
+      const safeAreaLeft = this.getSafeAreaInset('left');
+      const safeAreaRight = this.getSafeAreaInset('right');
+      
+      viewportWidth = window.innerWidth - safeAreaLeft - safeAreaRight - 10;
+      viewportHeight = window.innerHeight - safeAreaTop - safeAreaBottom - 60; // Account for title
+      
+      // Ensure minimum size for playability
+      viewportWidth = Math.max(320, viewportWidth);
+      viewportHeight = Math.max(240, viewportHeight);
+    } else {
+      // Desktop sizing
+      viewportWidth = Math.min(window.innerWidth - 40, 800);
+      viewportHeight = Math.min(window.innerHeight - 120, 600);
+    }
+    
+    // Maintain aspect ratio while fitting screen
+    const targetAspectRatio = 4 / 3; // 800x600 ratio
+    const screenAspectRatio = viewportWidth / viewportHeight;
+    
+    if (screenAspectRatio > targetAspectRatio) {
+      // Screen is wider than target, constrain by height
+      viewportWidth = viewportHeight * targetAspectRatio;
+    } else {
+      // Screen is taller than target, constrain by width
+      viewportHeight = viewportWidth / targetAspectRatio;
+    }
+    
+    // Ensure canvas doesn't exceed screen bounds
+    viewportWidth = Math.min(viewportWidth, window.innerWidth - 20);
+    viewportHeight = Math.min(viewportHeight, window.innerHeight - 80);
     
     // Set canvas CSS size
     this.canvas.style.width = viewportWidth + 'px';
@@ -91,22 +133,108 @@ class Game {
     
     // Scale the drawing context so everything draws at the correct size
     this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+    
+    console.log(`Canvas setup: ${viewportWidth}x${viewportHeight} (CSS), ${this.canvas.width}x${this.canvas.height} (actual), DPR: ${this.devicePixelRatio}`);
+  }
+
+  private getSafeAreaInset(side: 'top' | 'bottom' | 'left' | 'right'): number {
+    // Try to get CSS safe area insets if available
+    const style = getComputedStyle(document.documentElement);
+    const safeAreaValue = style.getPropertyValue(`env(safe-area-inset-${side})`);
+    
+    if (safeAreaValue && safeAreaValue !== 'env(safe-area-inset-' + side + ')') {
+      const pixels = parseInt(safeAreaValue);
+      return isNaN(pixels) ? 0 : pixels;
+    }
+
+    // Fallback estimates for common devices
+    const userAgent = navigator.userAgent;
+    if (/iPhone/.test(userAgent)) {
+      switch (side) {
+        case 'top': return 44; // Status bar + notch
+        case 'bottom': return 34; // Home indicator
+        default: return 0;
+      }
+    }
+
+    return 0;
   }
 
   private setupInput(): void {
-    // Handle window resize
+    let resizeTimeout: number | null = null;
+    
+    // Handle window resize with debouncing for better performance
     window.addEventListener('resize', () => {
-      this.setupCanvas();
-      // Update systems with new canvas dimensions
-      if (this.walkerSystem && this.zombieSystem && this.visualEffects && this.hud) {
-        const canvasWidth = this.canvas.width / this.devicePixelRatio;
-        const canvasHeight = this.canvas.height / this.devicePixelRatio;
-        this.walkerSystem.updateCanvasDimensions(canvasWidth, canvasHeight);
-        this.zombieSystem.updateCanvasDimensions(canvasWidth, canvasHeight);
-        this.visualEffects.updateCanvasDimensions(canvasWidth, canvasHeight);
-        this.hud.updateCanvasDimensions(canvasWidth, canvasHeight);
+      // Clear existing timeout
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+      
+      // Debounce resize events to avoid excessive recalculations
+      resizeTimeout = window.setTimeout(() => {
+        this.handleResize();
+      }, 150);
+    });
+
+    // Handle orientation change on mobile devices
+    window.addEventListener('orientationchange', () => {
+      // Wait for orientation change to complete
+      setTimeout(() => {
+        this.handleResize();
+      }, 500);
+    });
+
+    // Handle visibility change (app backgrounding/foregrounding)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        // App is being backgrounded, pause if not already paused
+        if (!this.isPaused) {
+          this.togglePause();
+          console.log('Auto-paused due to app backgrounding');
+        }
       }
     });
+  }
+
+  private handleResize(): void {
+    console.log('Handling window resize...');
+    
+    // Store previous canvas dimensions
+    const prevWidth = this.canvas.width / this.devicePixelRatio;
+    const prevHeight = this.canvas.height / this.devicePixelRatio;
+    
+    // Update canvas setup
+    this.setupCanvas();
+    
+    // Get new dimensions
+    const newWidth = this.canvas.width / this.devicePixelRatio;
+    const newHeight = this.canvas.height / this.devicePixelRatio;
+    
+    // Only update systems if dimensions actually changed
+    if (Math.abs(newWidth - prevWidth) > 1 || Math.abs(newHeight - prevHeight) > 1) {
+      console.log(`Canvas dimensions changed: ${prevWidth}x${prevHeight} -> ${newWidth}x${newHeight}`);
+      
+      // Update all systems with new canvas dimensions
+      if (this.walkerSystem && this.zombieSystem && this.visualEffects && this.hud && this.mobileUI) {
+        this.walkerSystem.updateCanvasDimensions(newWidth, newHeight);
+        this.zombieSystem.updateCanvasDimensions(newWidth, newHeight);
+        this.visualEffects.updateCanvasDimensions(newWidth, newHeight);
+        this.hud.updateCanvasDimensions(newWidth, newHeight);
+        this.mobileUI.updateCanvasDimensions(newWidth, newHeight);
+        
+        // Optimize mobile UI for new dimensions
+        this.mobileUI.optimizeForDevice();
+        
+        // Validate accessibility after resize
+        const accessibilityCheck = this.mobileUI.validateAccessibility();
+        if (!accessibilityCheck.valid) {
+          console.warn('Accessibility issues detected after resize:', accessibilityCheck.issues);
+        }
+      }
+      
+      // Announce resize to accessibility manager
+      this.accessibilityManager.announce(`Screen resized to ${Math.round(newWidth)} by ${Math.round(newHeight)} pixels`, 'polite');
+    }
   }
 
   private async initializeAssets(): Promise<void> {
@@ -127,8 +255,9 @@ class Game {
     const canvasWidth = this.canvas.width / this.devicePixelRatio;
     const canvasHeight = this.canvas.height / this.devicePixelRatio;
     
-    // Initialize performance monitor first
+    // Initialize performance monitor and accessibility manager first
     this.performanceMonitor = PerformanceMonitor.getInstance();
+    this.accessibilityManager = AccessibilityManager.getInstance();
     
     // Set up performance level change callback
     this.performanceMonitor.onPerformanceLevelChange((level: PerformanceLevel) => {
@@ -148,6 +277,7 @@ class Game {
     this.inputManager = new InputManager(this.canvas);
     this.visualEffects = new VisualEffects(canvasWidth, canvasHeight);
     this.hud = new HUD(this.resourceManager, this.upgradeManager, this.areaManager, canvasWidth, canvasHeight);
+    this.mobileUI = new MobileUI(this.canvas, canvasWidth, canvasHeight);
     
     // Set up upgrade callback
     this.hud.setOnUpgradePurchased((upgradeId: string) => {
@@ -159,13 +289,24 @@ class Game {
       this.visualEffects.createDeathEffect(x, y, color);
     });
 
+    // Initialize mobile-specific optimizations
+    this.initializeMobileOptimizations();
+
     // Load game state and sync managers
     this.loadGameState();
+    
+    // Announce game instructions for accessibility
+    setTimeout(() => {
+      this.accessibilityManager.announceGameInstructions();
+    }, 2000);
   }
 
   private togglePause(): void {
     this.isPaused = !this.isPaused;
     console.log(this.isPaused ? 'Game Paused' : 'Game Resumed');
+    
+    // Announce state change for accessibility
+    this.accessibilityManager.announceGameState(this.isPaused ? 'paused' : 'resumed');
   }
 
   private toggleReducedMotion(): void {
@@ -176,6 +317,27 @@ class Game {
     Animation.setReducedMotion(newSetting);
     
     console.log(`Reduced motion ${newSetting ? 'enabled' : 'disabled'}`);
+  }
+
+  private handleMobileButtonPress(buttonId: string): void {
+    this.accessibilityManager.announceMobileAction('touch-button-pressed');
+    
+    switch (buttonId) {
+      case 'pause':
+        this.togglePause();
+        break;
+      case 'upgrades':
+        this.hud.toggleUpgradeMenu();
+        this.accessibilityManager.announceGameState(
+          this.hud.isUpgradeMenuOpen() ? 'upgrade-menu-opened' : 'upgrade-menu-closed'
+        );
+        break;
+      case 'settings':
+        this.toggleReducedMotion();
+        break;
+      default:
+        console.log(`Unknown mobile button pressed: ${buttonId}`);
+    }
   }
 
   private handleUpgradePurchased(upgradeId: string): void {
@@ -292,7 +454,14 @@ class Game {
     if (this.inputManager.wasMouseJustPressed()) {
       const mousePos = this.inputManager.getMousePosition();
       
-      // Check if click was on upgrade menu first
+      // Check mobile UI buttons first
+      const mobileButtonPressed = this.mobileUI.handleTouch(mousePos);
+      if (mobileButtonPressed) {
+        this.handleMobileButtonPress(mobileButtonPressed);
+        return; // Don't process other clicks
+      }
+      
+      // Check if click was on upgrade menu
       if (this.hud.isUpgradeMenuOpen()) {
         const upgradeClicked = this.hud.handleClick(mousePos);
         if (!upgradeClicked) {
@@ -301,8 +470,11 @@ class Game {
       } else {
         // Normal zombie spawning
         const success = this.zombieSystem.spawnZombie(mousePos);
-        if (!success) {
+        if (success) {
+          this.accessibilityManager.announceMobileAction('zombie-spawned');
+        } else {
           console.log('Cannot spawn more zombies - limit reached!');
+          this.accessibilityManager.announceMobileAction('zombie-limit-reached');
         }
       }
     }
@@ -363,6 +535,9 @@ class Game {
     
     // Render HUD (souls counter, upgrade menu, etc.)
     this.hud.render(this.ctx);
+    
+    // Render mobile UI (touch buttons, etc.)
+    this.mobileUI.render(this.ctx);
   }
 
   private drawFPS(): void {
@@ -486,11 +661,101 @@ class Game {
     }
   }
 
+  // Initialize mobile-specific optimizations
+  private initializeMobileOptimizations(): void {
+    if (!this.mobileUI.isMobileDevice()) {
+      return;
+    }
+
+    console.log('Initializing mobile optimizations...');
+
+    // Optimize mobile UI for current device
+    this.mobileUI.optimizeForDevice();
+
+    // Validate accessibility compliance
+    const accessibilityCheck = this.mobileUI.validateAccessibility();
+    if (!accessibilityCheck.valid) {
+      console.warn('Accessibility issues detected:', accessibilityCheck.issues);
+    } else {
+      console.log('Mobile accessibility validation passed');
+    }
+
+    // Set up mobile-specific event listeners
+    this.setupMobileEventListeners();
+
+    // Announce mobile interface availability
+    const mobileInfo = this.mobileUI.getAccessibilityInfo();
+    this.accessibilityManager.announce(
+      `Mobile interface active. ${mobileInfo.join('. ')}`,
+      'polite'
+    );
+  }
+
+  private setupMobileEventListeners(): void {
+    // Prevent zoom on double-tap
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (event) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive: false });
+
+    // Prevent context menu on long press
+    document.addEventListener('contextmenu', (event) => {
+      if (this.mobileUI.isMobileDevice()) {
+        event.preventDefault();
+      }
+    });
+
+    // Handle device orientation lock if supported
+    if ('orientation' in screen && 'lock' in screen.orientation) {
+      // Try to lock to landscape on mobile for better gameplay
+      try {
+        (screen.orientation as any).lock('landscape').catch(() => {
+          console.log('Orientation lock not supported or denied');
+        });
+      } catch (error) {
+        console.log('Orientation lock not available');
+      }
+    }
+
+    // Handle wake lock to prevent screen from turning off during gameplay
+    if ('wakeLock' in navigator) {
+      let wakeLock: any = null;
+      
+      const requestWakeLock = async () => {
+        try {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+          console.log('Screen wake lock activated');
+        } catch (error) {
+          console.log('Wake lock request failed:', error);
+        }
+      };
+
+      // Request wake lock when game starts
+      if (!this.isPaused) {
+        requestWakeLock();
+      }
+
+      // Re-request wake lock when visibility changes
+      document.addEventListener('visibilitychange', () => {
+        if (wakeLock !== null && document.visibilityState === 'visible' && !this.isPaused) {
+          requestWakeLock();
+        }
+      });
+    }
+  }
+
   // Cleanup method
   public destroy(): void {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
+    
+    // Clean up accessibility manager
+    this.accessibilityManager.destroy();
   }
 }
 

@@ -3,9 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./assets/vite-4a748afd-4a748afd-4a748afd-4a748afd-4a748afd.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="description" content="Endless Horde - A browser-based idle survival game where you command zombies to defeat walkers and earn souls for upgrades." />
+    <meta name="theme-color" content="#1a1a1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Endless Horde" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
     <title>Endless Horde</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
+      
       body {
         margin: 0;
         padding: 0;
@@ -16,21 +27,139 @@
         justify-content: center;
         align-items: center;
         min-height: 100vh;
+        overflow: hidden; /* Prevent scrolling on mobile */
+        touch-action: manipulation; /* Improve touch responsiveness */
+        -webkit-user-select: none; /* Prevent text selection */
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        /* Support for safe areas on mobile devices */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
       }
       
       #gameCanvas {
         border: 2px solid #333;
         background-color: #87CEEB;
         display: block;
+        touch-action: none; /* Prevent default touch behaviors */
+        -webkit-touch-callout: none; /* Disable callout on iOS */
+        -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
       }
       
       .game-container {
         text-align: center;
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
       }
       
       h1 {
-        margin-bottom: 20px;
+        margin: 10px 0;
         color: #fff;
+        font-size: clamp(1.2rem, 4vw, 2rem); /* Responsive font size */
+      }
+      
+      /* Mobile-specific styles */
+      @media (max-width: 768px) {
+        body {
+          padding: 5px;
+          /* Adjust for mobile safe areas */
+          padding-top: max(5px, env(safe-area-inset-top));
+          padding-bottom: max(5px, env(safe-area-inset-bottom));
+        }
+        
+        h1 {
+          margin: 5px 0;
+          font-size: 1.5rem;
+        }
+        
+        #gameCanvas {
+          border-width: 1px;
+          max-width: calc(100vw - 10px);
+          max-height: calc(100vh - 60px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        }
+        
+        .game-container {
+          height: 100vh;
+          height: 100dvh; /* Use dynamic viewport height if supported */
+        }
+      }
+      
+      /* Landscape orientation optimizations */
+      @media (max-width: 768px) and (orientation: landscape) {
+        h1 {
+          font-size: 1.2rem;
+          margin: 2px 0;
+        }
+        
+        #gameCanvas {
+          max-height: calc(100vh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        }
+      }
+      
+      /* High DPI display optimizations */
+      @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+        #gameCanvas {
+          image-rendering: -webkit-optimize-contrast;
+          image-rendering: crisp-edges;
+        }
+      }
+      
+      /* Accessibility improvements */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+      
+      /* High contrast mode support */
+      @media (prefers-contrast: high) {
+        #gameCanvas {
+          border-color: #ffffff;
+        }
+      }
+      
+      /* Focus indicators for accessibility */
+      button:focus,
+      canvas:focus {
+        outline: 2px solid #4CAF50;
+        outline-offset: 2px;
+      }
+      
+      /* Improve touch target sizes for accessibility */
+      @media (pointer: coarse) {
+        button {
+          min-height: 44px;
+          min-width: 44px;
+        }
+      }
+      
+      /* Reduce motion for users who prefer it */
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+      
+      /* Loading indicator */
+      .loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #ffffff;
+        font-size: 1.2rem;
       }
     </style>
     
@@ -43,7 +172,28 @@
   <body>
     <div class="game-container">
       <h1>Endless Horde</h1>
-      <canvas id="gameCanvas" width="800" height="600"></canvas>
+      <canvas id="gameCanvas" width="800" height="600" 
+              role="application" 
+              aria-label="Endless Horde game canvas - tap to spawn zombies, use touch buttons for controls"
+              aria-describedby="game-instructions"
+              tabindex="0"></canvas>
+      <div id="loading" class="loading" style="display: none;">Loading game...</div>
+    </div>
+    
+    <!-- Screen reader announcements -->
+    <div id="sr-announcements" aria-live="polite" aria-atomic="true" style="position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden;"></div>
+    
+    <!-- Game instructions for screen readers -->
+    <div id="game-instructions" style="position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden;">
+      Endless Horde is an idle survival game. Tap or click on the screen to spawn zombies that will hunt walkers and earn you souls. 
+      Use souls to purchase upgrades. On mobile devices, use the touch buttons in the corners for pause, upgrades, and settings. 
+      Press P to pause, U for upgrades, M for reduced motion settings.
+    </div>
+    
+    <!-- Mobile-specific accessibility hints -->
+    <div id="mobile-hints" style="position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden;">
+      Mobile controls: Pause button in top-right corner, upgrade button in bottom-right corner, settings button in bottom-left corner. 
+      Tap anywhere else on the screen to spawn zombies.
     </div>
     
   </body>
