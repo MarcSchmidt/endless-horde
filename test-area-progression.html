@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Area Progression Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 5px;
+        }
+        .pass { color: #4CAF50; }
+        .fail { color: #F44336; }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Area Progression and Save System Test</h1>
+    
+    <div class="test-section">
+        <h2>Area Manager Tests</h2>
+        <div id="area-tests"></div>
+        <button onclick="runAreaTests()">Run Area Tests</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Save Manager Tests</h2>
+        <div id="save-tests"></div>
+        <button onclick="runSaveTests()">Run Save Tests</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Integration Tests</h2>
+        <div id="integration-tests"></div>
+        <button onclick="runIntegrationTests()">Run Integration Tests</button>
+    </div>
+
+    <script type="module">
+        // Import the managers for testing
+        import { AreaManager } from './src/managers/AreaManager.ts';
+        import { SaveManager } from './src/managers/SaveManager.ts';
+        import { ResourceManager } from './src/managers/ResourceManager.ts';
+        import { UpgradeManager } from './src/managers/UpgradeManager.ts';
+
+        window.AreaManager = AreaManager;
+        window.SaveManager = SaveManager;
+        window.ResourceManager = ResourceManager;
+        window.UpgradeManager = UpgradeManager;
+
+        window.runAreaTests = function() {
+            const results = [];
+            const areaManager = new AreaManager();
+            
+            // Test 1: Initial area should be 0
+            const initialArea = areaManager.getCurrentAreaId();
+            results.push({
+                test: "Initial area should be 0",
+                pass: initialArea === 0,
+                result: `Got: ${initialArea}`
+            });
+            
+            // Test 2: Area 0 should be unlocked with 0 walkers defeated
+            const area0Unlocked = areaManager.isAreaUnlocked(0, 0);
+            results.push({
+                test: "Area 0 should be unlocked with 0 walkers defeated",
+                pass: area0Unlocked === true,
+                result: `Got: ${area0Unlocked}`
+            });
+            
+            // Test 3: Area 1 should not be unlocked with 0 walkers defeated
+            const area1Locked = areaManager.isAreaUnlocked(1, 0);
+            results.push({
+                test: "Area 1 should not be unlocked with 0 walkers defeated",
+                pass: area1Locked === false,
+                result: `Got: ${area1Locked}`
+            });
+            
+            // Test 4: Area 1 should be unlocked with 25 walkers defeated
+            const area1Unlocked = areaManager.isAreaUnlocked(1, 25);
+            results.push({
+                test: "Area 1 should be unlocked with 25 walkers defeated",
+                pass: area1Unlocked === true,
+                result: `Got: ${area1Unlocked}`
+            });
+            
+            // Test 5: Progress to next area calculation
+            const progress = areaManager.getProgressToNextArea(10);
+            const expectedProgress = { current: 10, required: 25, percentage: 40 };
+            const progressCorrect = progress && 
+                progress.current === expectedProgress.current &&
+                progress.required === expectedProgress.required &&
+                progress.percentage === expectedProgress.percentage;
+            results.push({
+                test: "Progress calculation should be correct",
+                pass: progressCorrect,
+                result: `Got: ${JSON.stringify(progress)}`
+            });
+            
+            displayResults('area-tests', results);
+        };
+
+        window.runSaveTests = function() {
+            const results = [];
+            const saveManager = new SaveManager();
+            
+            // Test 1: Save and load game state
+            const testData = {
+                souls: 100,
+                walkersDefeated: 50,
+                currentArea: 1,
+                upgrades: {
+                    'zombie-speed': { level: 2, baseCost: 10, costMultiplier: 1.5 }
+                }
+            };
+            
+            const saveSuccess = saveManager.saveGameState(testData);
+            results.push({
+                test: "Should save game state successfully",
+                pass: saveSuccess === true,
+                result: `Save result: ${saveSuccess}`
+            });
+            
+            const loadedData = saveManager.loadGameState();
+            const loadSuccess = loadedData && 
+                loadedData.souls === testData.souls &&
+                loadedData.walkersDefeated === testData.walkersDefeated &&
+                loadedData.currentArea === testData.currentArea;
+            results.push({
+                test: "Should load game state correctly",
+                pass: loadSuccess,
+                result: `Loaded: ${JSON.stringify(loadedData)}`
+            });
+            
+            // Test 2: Export and import functionality
+            const exportedData = saveManager.exportSaveData();
+            const exportSuccess = exportedData !== null && exportedData.includes('"souls":100');
+            results.push({
+                test: "Should export save data as JSON",
+                pass: exportSuccess,
+                result: `Export success: ${exportSuccess}`
+            });
+            
+            // Clean up test data
+            saveManager.deleteSaveData();
+            
+            displayResults('save-tests', results);
+        };
+
+        window.runIntegrationTests = function() {
+            const results = [];
+            
+            // Test integration between all managers
+            const saveManager = new SaveManager();
+            const resourceManager = new ResourceManager(saveManager);
+            const upgradeManager = new UpgradeManager(saveManager);
+            const areaManager = new AreaManager();
+            
+            // Test 1: Resource manager with area multiplier
+            const currentArea = areaManager.getCurrentArea();
+            resourceManager.awardSouls(1, currentArea.soulMultiplier);
+            const souls = resourceManager.getSouls();
+            results.push({
+                test: "Resource manager should award souls with area multiplier",
+                pass: souls === currentArea.soulMultiplier,
+                result: `Expected: ${currentArea.soulMultiplier}, Got: ${souls}`
+            });
+            
+            // Test 2: Area progression with walker defeats
+            resourceManager.awardSouls(1, 1); // This increments walkers defeated
+            const walkersDefeated = resourceManager.getWalkersDefeated();
+            results.push({
+                test: "Walker defeat count should increment",
+                pass: walkersDefeated === 2, // 1 from previous test + 1 from this test
+                result: `Expected: 2, Got: ${walkersDefeated}`
+            });
+            
+            // Test 3: Save system integration
+            const saveSuccess = saveManager.saveGameState({
+                souls: resourceManager.getSouls(),
+                walkersDefeated: resourceManager.getWalkersDefeated(),
+                currentArea: areaManager.getCurrentAreaId(),
+                upgrades: upgradeManager.getUpgradeData()
+            });
+            results.push({
+                test: "Integrated save should work",
+                pass: saveSuccess === true,
+                result: `Save success: ${saveSuccess}`
+            });
+            
+            // Clean up
+            saveManager.deleteSaveData();
+            
+            displayResults('integration-tests', results);
+        };
+
+        function displayResults(containerId, results) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = results.map(result => 
+                `<div class="${result.pass ? 'pass' : 'fail'}">
+                    ${result.pass ? '✓' : '✗'} ${result.test}<br>
+                    <small>${result.result}</small>
+                </div>`
+            ).join('');
+        }
+    </script>
+</body>
+</html>
