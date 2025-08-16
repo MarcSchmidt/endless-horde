@@ -13,6 +13,7 @@ export class ZombieSystem {
   private resourceManager: ResourceManager;
   private upgradeManager: UpgradeManager;
   private areaManager: AreaManager;
+  private onWalkerDefeated?: (x: number, y: number, color: string) => void;
 
   constructor(canvasWidth: number, canvasHeight: number, resourceManager: ResourceManager, upgradeManager: UpgradeManager, areaManager: AreaManager) {
     this.canvasWidth = canvasWidth;
@@ -80,6 +81,13 @@ export class ZombieSystem {
           const currentArea = this.areaManager.getCurrentArea();
           this.resourceManager.awardSouls(1, currentArea.soulMultiplier);
           console.log(`Zombie defeated a walker! Souls earned: ${currentArea.soulMultiplier}, Total: ${this.resourceManager.getSouls()}`);
+          
+          // Trigger visual effect callback if set
+          if (this.onWalkerDefeated) {
+            const walkerColors = currentArea.walkerColors;
+            const color = walkerColors[Math.floor(Math.random() * walkerColors.length)];
+            this.onWalkerDefeated(walker.position.x, walker.position.y, color);
+          }
         }
         
         break; // One attack per frame per zombie
@@ -129,5 +137,10 @@ export class ZombieSystem {
         zombie.updateSpeed(speedMultiplier);
       }
     }
+  }
+
+  // Set callback for when walker is defeated (for visual effects)
+  setOnWalkerDefeated(callback: (x: number, y: number, color: string) => void): void {
+    this.onWalkerDefeated = callback;
   }
 }

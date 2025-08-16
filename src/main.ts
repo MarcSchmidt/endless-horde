@@ -6,6 +6,10 @@ import { ResourceManager } from './managers/ResourceManager.ts';
 import { UpgradeManager } from './managers/UpgradeManager.ts';
 import { AreaManager } from './managers/AreaManager.ts';
 import { SaveManager } from './managers/SaveManager.ts';
+import { SettingsManager } from './managers/SettingsManager.ts';
+import { AssetManager } from './core/AssetManager.ts';
+import { Animation } from './core/Animation.ts';
+import { VisualEffects } from './core/VisualEffects.ts';
 import { HUD } from './ui/HUD.ts';
 
 class Game {
@@ -23,6 +27,7 @@ class Game {
   private isPaused: boolean = false;
   private lastPauseKeyState: boolean = false;
   private lastUpgradeKeyState: boolean = false;
+  private lastMotionKeyState: boolean = false;
   
   // FPS tracking
   private fps: number = 0;
@@ -37,6 +42,9 @@ class Game {
   private upgradeManager!: UpgradeManager;
   private areaManager!: AreaManager;
   private saveManager!: SaveManager;
+  private settingsManager!: SettingsManager;
+  private assetManager!: AssetManager;
+  private visualEffects!: VisualEffects;
   private hud!: HUD;
 
   constructor() {
@@ -55,8 +63,15 @@ class Game {
     this.devicePixelRatio = window.devicePixelRatio || 1;
     this.setupCanvas();
     this.setupInput();
-    this.initializeSystems();
-    this.startGameLoop();
+    this.initializeAssets().then(() => {
+      this.initializeSystems();
+      this.startGameLoop();
+    }).catch(error => {
+      console.error('Failed to initialize assets:', error);
+      // Continue with fallback rendering
+      this.initializeSystems();
+      this.startGameLoop();
+    });
   }
 
   private setupCanvas(): void {
@@ -81,14 +96,29 @@ class Game {
     window.addEventListener('resize', () => {
       this.setupCanvas();
       // Update systems with new canvas dimensions
-      if (this.walkerSystem && this.zombieSystem && this.hud) {
+      if (this.walkerSystem && this.zombieSystem && this.visualEffects && this.hud) {
         const canvasWidth = this.canvas.width / this.devicePixelRatio;
         const canvasHeight = this.canvas.height / this.devicePixelRatio;
         this.walkerSystem.updateCanvasDimensions(canvasWidth, canvasHeight);
         this.zombieSystem.updateCanvasDimensions(canvasWidth, canvasHeight);
+        this.visualEffects.updateCanvasDimensions(canvasWidth, canvasHeight);
         this.hud.updateCanvasDimensions(canvasWidth, canvasHeight);
       }
     });
+  }
+
+  private async initializeAssets(): Promise<void> {
+    // Initialize asset and settings managers
+    this.assetManager = AssetManager.getInstance();
+    this.settingsManager = SettingsManager.getInstance();
+    
+    // Initialize placeholder sprites
+    await this.assetManager.initializePlaceholderSprites();
+    
+    // Set up reduced motion based on settings
+    Animation.setReducedMotion(this.settingsManager.isReducedMotionEnabled());
+    
+    console.log('Assets initialized successfully');
   }
 
   private initializeSystems(): void {
@@ -105,11 +135,17 @@ class Game {
     this.walkerSystem = new WalkerSystem(canvasWidth, canvasHeight, this.areaManager);
     this.zombieSystem = new ZombieSystem(canvasWidth, canvasHeight, this.resourceManager, this.upgradeManager, this.areaManager);
     this.inputManager = new InputManager(this.canvas);
+    this.visualEffects = new VisualEffects(canvasWidth, canvasHeight);
     this.hud = new HUD(this.resourceManager, this.upgradeManager, this.areaManager, canvasWidth, canvasHeight);
     
     // Set up upgrade callback
     this.hud.setOnUpgradePurchased((upgradeId: string) => {
       this.handleUpgradePurchased(upgradeId);
+    });
+
+    // Set up visual effects callback for walker defeats
+    this.zombieSystem.setOnWalkerDefeated((x: number, y: number, color: string) => {
+      this.visualEffects.createDeathEffect(x, y, color);
     });
 
     // Load game state and sync managers
@@ -119,6 +155,16 @@ class Game {
   private togglePause(): void {
     this.isPaused = !this.isPaused;
     console.log(this.isPaused ? 'Game Paused' : 'Game Resumed');
+  }
+
+  private toggleReducedMotion(): void {
+    const currentSetting = this.settingsManager.isReducedMotionEnabled();
+    const newSetting = !currentSetting;
+    
+    this.settingsManager.setReducedMotion(newSetting);
+    Animation.setReducedMotion(newSetting);
+    
+    console.log(`Reduced motion ${newSetting ? 'enabled' : 'disabled'}`);
   }
 
   private handleUpgradePurchased(upgradeId: string): void {
@@ -191,6 +237,13 @@ class Game {
     const activeWalkers = this.walkerSystem.getActiveWalkers();
     this.zombieSystem.update(deltaTime, activeWalkers);
     
+    // Update visual effects
+    this.visualEffects.update(deltaTime);
+    
+    // Create ambient particles for current area
+    const currentArea = this.areaManager.getCurrentArea();
+    this.visualEffects.createAmbientParticles(currentArea);
+    
     // Update HUD
     this.hud.update();
   }
@@ -211,6 +264,13 @@ class Game {
       this.hud.toggleUpgradeMenu();
     }
     this.lastUpgradeKeyState = currentUpgradeKeyState;
+
+    // Handle reduced motion toggle
+    const currentMotionKeyState = this.inputManager.isKeyPressed('m');
+    if (currentMotionKeyState && !this.lastMotionKeyState) {
+      this.toggleReducedMotion();
+    }
+    this.lastMotionKeyState = currentMotionKeyState;
 
     // Handle mouse/touch clicks
     if (this.inputManager.wasMouseJustPressed()) {
@@ -241,11 +301,17 @@ class Game {
     this.ctx.fillStyle = currentArea.backgroundColor;
     this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     
+    // Render area-specific background effects
+    this.visualEffects.renderBackgroundEffects(this.ctx, currentArea);
+    
     // Render walker system
     this.walkerSystem.render(this.ctx);
     
     // Render zombie system
     this.zombieSystem.render(this.ctx);
+    
+    // Render visual effects (particles, etc.)
+    this.visualEffects.render(this.ctx);
     
     // Show pause overlay if paused
     if (this.isPaused) {
@@ -271,8 +337,10 @@ class Game {
       this.ctx.restore();
     }
     
-    // Draw FPS counter
-    this.drawFPS();
+    // Draw FPS counter (if enabled in settings)
+    if (this.settingsManager.shouldShowFPS()) {
+      this.drawFPS();
+    }
     
     // Draw walker count and controls info
     this.drawUI();
@@ -328,7 +396,8 @@ class Game {
     this.ctx.font = '14px Arial';
     this.ctx.fillStyle = '#666';
     
-    this.ctx.fillText('Press P to pause/resume', 10, canvasHeight - 30);
+    this.ctx.fillText('Press P to pause/resume', 10, canvasHeight - 50);
+    this.ctx.fillText('Press M to toggle reduced motion', 10, canvasHeight - 30);
     this.ctx.fillText('Click/tap to spawn zombies', 10, canvasHeight - 10);
     
     this.ctx.restore();
@@ -364,6 +433,12 @@ class Game {
     if (areaChanged) {
       const newArea = this.areaManager.getCurrentArea();
       console.log(`Advanced to new area: ${newArea.name}`);
+      
+      // Update walker sprites for the new area
+      this.walkerSystem.updateWalkerSprites(this.areaManager.getCurrentAreaId());
+      
+      // Create area transition visual effect
+      this.visualEffects.createAreaTransitionEffect(newArea);
       
       // Save the area progression
       this.saveManager.saveGameState({

@@ -2,16 +2,20 @@
 import { Entity } from '../core/Entity.ts';
 import { Vector2 } from '../core/Vector2.ts';
 import { Walker } from './Walker.ts';
+import { Animation } from '../core/Animation.ts';
 
 export class Zombie extends Entity {
   private baseSpeed: number;
   private speed: number;
   private target: Walker | null = null;
-  private color: string;
   private size: number;
   private canvasWidth: number;
   private canvasHeight: number;
   private seekRange: number;
+  
+  // Animation properties
+  private walkAnimation: Animation;
+  private isMoving: boolean = false;
 
   constructor(x: number, y: number, canvasWidth: number, canvasHeight: number, speedMultiplier: number = 1) {
     super(x, y);
@@ -23,9 +27,8 @@ export class Zombie extends Entity {
     this.canvasHeight = canvasHeight;
     this.seekRange = 200; // Range to detect walkers
     
-    // Zombie color - different shades of red/purple to distinguish from walkers
-    const zombieColors = ['#8B0000', '#DC143C', '#B22222', '#800080', '#4B0082'];
-    this.color = zombieColors[Math.floor(Math.random() * zombieColors.length)];
+    // Initialize zombie animation
+    this.walkAnimation = Animation.createWalkAnimation('zombie');
   }
 
   update(deltaTime: number): void {
@@ -43,13 +46,23 @@ export class Zombie extends Entity {
     // Move towards target if we have one
     if (this.target && this.target.active) {
       this.seekTarget();
+      this.isMoving = true;
     } else {
       // No target, stop moving
       this.velocity.set(0, 0);
+      this.isMoving = false;
     }
 
     // Update position using parent method
     this.update(deltaTime);
+
+    // Update animation
+    if (this.isMoving) {
+      this.walkAnimation.play();
+    } else {
+      this.walkAnimation.pause();
+    }
+    this.walkAnimation.update(deltaTime);
 
     // Keep zombie within bounds
     this.keepInBounds();
@@ -112,29 +125,8 @@ export class Zombie extends Entity {
 
     ctx.save();
     
-    // Draw zombie as a colored rectangle with different shape to distinguish from walkers
-    ctx.fillStyle = this.color;
-    
-    // Draw as a diamond/rotated square to make it visually distinct
-    ctx.translate(this.position.x, this.position.y);
-    ctx.rotate(Math.PI / 4); // 45 degree rotation
-    
-    ctx.fillRect(
-      -this.size / 2, 
-      -this.size / 2, 
-      this.size, 
-      this.size
-    );
-    
-    // Add a border for better visibility
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(
-      -this.size / 2, 
-      -this.size / 2, 
-      this.size, 
-      this.size
-    );
+    // Render animated sprite
+    this.walkAnimation.render(ctx, this.position.x, this.position.y, this.size, this.size);
     
     ctx.restore();
   }

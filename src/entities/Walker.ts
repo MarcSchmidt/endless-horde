@@ -2,12 +2,12 @@
 import { Entity } from '../core/Entity.ts';
 import { Vector2 } from '../core/Vector2.ts';
 import { AreaConfig } from '../managers/AreaManager.ts';
+import { Animation } from '../core/Animation.ts';
 
 export class Walker extends Entity {
   private speed: number;
   private baseSpeed: number;
   private targetPosition: Vector2;
-  private color: string;
   private _size: number;
   private canvasWidth: number;
   private canvasHeight: number;
@@ -19,6 +19,10 @@ export class Walker extends Entity {
   private _maxHealth: number;
   private _soulValue: number;
   private areaLevel: number;
+  
+  // Animation properties
+  private walkAnimation: Animation;
+  private isMoving: boolean = false;
 
   constructor(x: number, y: number, canvasWidth: number, canvasHeight: number, areaConfig?: AreaConfig) {
     super(x, y);
@@ -31,8 +35,7 @@ export class Walker extends Entity {
       this._soulValue = areaConfig.soulMultiplier;
       this.areaLevel = areaConfig.id;
       
-      // Choose color from area-specific palette
-      this.color = areaConfig.walkerColors[Math.floor(Math.random() * areaConfig.walkerColors.length)];
+      // Area-specific colors are now handled by sprites
     } else {
       // Default values for backward compatibility
       this.baseSpeed = 50;
@@ -41,9 +44,7 @@ export class Walker extends Entity {
       this._soulValue = 1;
       this.areaLevel = 0;
       
-      // Default color palette
-      const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff'];
-      this.color = colors[Math.floor(Math.random() * colors.length)];
+      // Default colors are now handled by sprites
     }
     
     // Add some random variation to speed (±20%)
@@ -58,6 +59,10 @@ export class Walker extends Entity {
     
     // Set initial random target
     this.setRandomTarget();
+    
+    // Initialize animation based on area
+    const spriteName = `walker_area_${this.areaLevel + 1}`;
+    this.walkAnimation = Animation.createWalkAnimation(spriteName);
   }
 
   private setRandomTarget(): void {
@@ -92,13 +97,23 @@ export class Walker extends Entity {
       // Normalize direction and apply speed
       direction.normalize().multiply(this.speed);
       this.velocity = direction;
+      this.isMoving = true;
     } else {
       // Stop if very close to target
       this.velocity.set(0, 0);
+      this.isMoving = false;
     }
 
     // Update position
     super.update(deltaTime);
+
+    // Update animation
+    if (this.isMoving) {
+      this.walkAnimation.play();
+    } else {
+      this.walkAnimation.pause();
+    }
+    this.walkAnimation.update(deltaTime);
 
     // Keep walker within bounds
     this.keepInBounds();
@@ -129,24 +144,8 @@ export class Walker extends Entity {
 
     ctx.save();
     
-    // Draw walker as a colored rectangle
-    ctx.fillStyle = this.color;
-    ctx.fillRect(
-      this.position.x - this._size / 2, 
-      this.position.y - this._size / 2, 
-      this._size, 
-      this._size
-    );
-    
-    // Add a subtle border for better visibility
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(
-      this.position.x - this._size / 2, 
-      this.position.y - this._size / 2, 
-      this._size, 
-      this._size
-    );
+    // Render animated sprite
+    this.walkAnimation.render(ctx, this.position.x, this.position.y, this._size, this._size);
     
     // Draw health bar for walkers with more than 1 max health
     if (this._maxHealth > 1) {
@@ -239,5 +238,12 @@ export class Walker extends Entity {
   // Get health percentage for visual effects
   getHealthPercentage(): number {
     return this._health / this._maxHealth;
+  }
+
+  // Update walker sprite when area changes
+  updateAreaSprite(areaId: number): void {
+    this.areaLevel = areaId;
+    const spriteName = `walker_area_${areaId + 1}`;
+    this.walkAnimation.setSprite(spriteName);
   }
 }

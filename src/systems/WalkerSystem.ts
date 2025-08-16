@@ -115,4 +115,13 @@ export class WalkerSystem {
     }
     this.walkers = [];
   }
+
+  // Update all walker sprites when area changes
+  updateWalkerSprites(areaId: number): void {
+    for (const walker of this.walkers) {
+      if (walker.active) {
+        walker.updateAreaSprite(areaId);
+      }
+    }
+  }
 }
