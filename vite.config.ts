@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  base: '/endless-horde-web-game/',
+  base: '/endless-horde/',
   build: {
     outDir: 'docs',
     emptyOutDir: true,
