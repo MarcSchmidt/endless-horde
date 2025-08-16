@@ -3,29 +3,41 @@ import { Entity } from '../core/Entity.ts';
 import { Vector2 } from '../core/Vector2.ts';
 import { Walker } from './Walker.ts';
 import { Animation } from '../core/Animation.ts';
+import { CollisionEntity } from '../core/CollisionSystem.ts';
+import { Attacker, AttackConfig, AttackSystem } from '../core/AttackSystem.ts';
 
-export class Zombie extends Entity {
+export class Zombie extends Entity implements CollisionEntity, Attacker {
   private baseSpeed: number;
   private speed: number;
   private target: Walker | null = null;
-  private size: number;
-  private canvasWidth: number;
-  private canvasHeight: number;
+  public size: number;
+
   private seekRange: number;
+  
+  // Attack properties
+  public lastAttackTime?: number;
+  private attackConfig: AttackConfig;
+  private attackSystem: AttackSystem;
   
   // Animation properties
   private walkAnimation: Animation;
   private isMoving: boolean = false;
 
-  constructor(x: number, y: number, canvasWidth: number, canvasHeight: number, speedMultiplier: number = 1) {
+  constructor(x: number, y: number, _canvasWidth: number, _canvasHeight: number, speedMultiplier: number = 1) {
     super(x, y);
     
     this.baseSpeed = 60; // Base speed - slightly faster than walkers to catch them
     this.speed = this.baseSpeed * speedMultiplier;
     this.size = 10; // Slightly larger than walkers
-    this.canvasWidth = canvasWidth;
-    this.canvasHeight = canvasHeight;
     this.seekRange = 200; // Range to detect walkers
+    
+    // Initialize attack system and configuration
+    this.attackSystem = AttackSystem.getInstance();
+    this.attackConfig = {
+      damage: 1,
+      range: 5, // 5px attack range beyond collision
+      cooldown: 500 // 500ms cooldown between attacks
+    };
     
     // Initialize zombie animation
     this.walkAnimation = Animation.createWalkAnimation('zombie');
@@ -63,9 +75,6 @@ export class Zombie extends Entity {
       this.walkAnimation.pause();
     }
     this.walkAnimation.update(deltaTime);
-
-    // Keep zombie within bounds
-    this.keepInBounds();
   }
 
   private findNearestWalker(walkers: Walker[]): void {
@@ -104,21 +113,7 @@ export class Zombie extends Entity {
     }
   }
 
-  private keepInBounds(): void {
-    const margin = this.size / 2;
-    
-    if (this.position.x < margin) {
-      this.position.x = margin;
-    } else if (this.position.x > this.canvasWidth - margin) {
-      this.position.x = this.canvasWidth - margin;
-    }
-    
-    if (this.position.y < margin) {
-      this.position.y = margin;
-    } else if (this.position.y > this.canvasHeight - margin) {
-      this.position.y = this.canvasHeight - margin;
-    }
-  }
+
 
   render(ctx: CanvasRenderingContext2D): void {
     if (!this.active) return;
@@ -131,10 +126,9 @@ export class Zombie extends Entity {
     ctx.restore();
   }
 
-  // Update canvas dimensions when window resizes
-  updateCanvasDimensions(width: number, height: number): void {
-    this.canvasWidth = width;
-    this.canvasHeight = height;
+  // Update canvas dimensions when window resizes (no longer needed since collision system handles boundaries)
+  updateCanvasDimensions(_width: number, _height: number): void {
+    // Canvas dimensions are now handled by the collision system
   }
 
   // Get current target for debugging
@@ -144,12 +138,19 @@ export class Zombie extends Entity {
 
   // Check if zombie is close enough to attack a walker
   canAttack(walker: Walker): boolean {
-    if (!walker.active) return false;
-    
-    const distance = this.position.distanceTo(walker.position);
-    const attackRange = (this.size + walker.size) / 2 + 2; // Small overlap needed
-    
-    return distance <= attackRange;
+    const currentTime = performance.now();
+    return this.attackSystem.canAttack(this, walker, this.attackConfig, currentTime);
+  }
+
+  // Perform attack on walker if possible
+  performAttack(walker: Walker): boolean {
+    const currentTime = performance.now();
+    return this.attackSystem.performAttack(this, walker, this.attackConfig, currentTime);
+  }
+
+  // Check if zombie is within attack range (regardless of cooldown)
+  isInAttackRange(walker: Walker): boolean {
+    return this.attackSystem.isInRange(this, walker, this.attackConfig);
   }
 
   // Update zombie speed based on upgrades

@@ -9,6 +9,7 @@ import { ObjectPool } from '../core/ObjectPool.ts';
 import { EntityCuller, CullableEntity } from '../core/EntityCuller.ts';
 // import { BatchRenderer } from '../core/BatchRenderer.ts';
 import { PerformanceMonitor } from '../core/PerformanceMonitor.ts';
+import { CollisionSystem } from '../core/CollisionSystem.ts';
 
 // Extend Zombie to be cullable
 interface CullableZombie extends Zombie, CullableEntity {}
@@ -27,6 +28,7 @@ export class ZombieSystem {
   private entityCuller: EntityCuller;
   // private batchRenderer: BatchRenderer;
   private performanceMonitor: PerformanceMonitor;
+  private collisionSystem: CollisionSystem;
 
   constructor(canvasWidth: number, canvasHeight: number, resourceManager: ResourceManager, upgradeManager: UpgradeManager, areaManager: AreaManager) {
     this.canvasWidth = canvasWidth;
@@ -39,6 +41,7 @@ export class ZombieSystem {
     this.entityCuller = EntityCuller.getInstance();
     // this.batchRenderer = BatchRenderer.getInstance();
     this.performanceMonitor = PerformanceMonitor.getInstance();
+    this.collisionSystem = CollisionSystem.getInstance();
     
     // Initialize object pool for zombies
     this.zombiePool = new ObjectPool<Zombie>(
@@ -84,6 +87,17 @@ export class ZombieSystem {
         // Check for collisions with walkers
         this.checkCollisions(zombie, walkers);
       }
+    }
+
+    // Apply zombie separation to prevent stacking (only for active zombies)
+    const activeZombies = this.zombies.filter(z => z.active);
+    if (activeZombies.length > 1) {
+      this.collisionSystem.applySeparation(activeZombies, 40); // Slightly stronger separation for zombies
+    }
+
+    // Apply boundary collision for all active zombies
+    for (const zombie of activeZombies) {
+      this.collisionSystem.applyBoundaryCollision(zombie, this.canvasWidth, this.canvasHeight, 100);
     }
   }
 
@@ -133,11 +147,13 @@ export class ZombieSystem {
     for (const walker of walkers) {
       if (!walker.active) continue;
       
-      if (zombie.canAttack(walker)) {
-        // Zombie attacks walker - deal damage
-        const wasDefeated = walker.takeDamage(1);
+      // Use the new attack system with proper cooldown
+      if (zombie.performAttack(walker)) {
+        // Attack was successful - walker was damaged
+        console.log(`Zombie attacked walker! Walker health: ${walker.health}/${walker.maxHealth}`);
         
-        if (wasDefeated) {
+        // Check if walker was defeated
+        if (!walker.active) {
           // Walker was defeated - award souls based on area multiplier
           const currentArea = this.areaManager.getCurrentArea();
           this.resourceManager.awardSouls(1, currentArea.soulMultiplier);

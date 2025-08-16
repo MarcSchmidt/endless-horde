@@ -3,12 +3,13 @@ import { Entity } from '../core/Entity.ts';
 import { Vector2 } from '../core/Vector2.ts';
 import { AreaConfig } from '../managers/AreaManager.ts';
 import { Animation } from '../core/Animation.ts';
+import { CollisionEntity } from '../core/CollisionSystem.ts';
 
-export class Walker extends Entity {
+export class Walker extends Entity implements CollisionEntity {
   private speed: number;
   private baseSpeed: number;
   private targetPosition: Vector2;
-  private _size: number;
+  public size: number;
   private canvasWidth: number;
   private canvasHeight: number;
   private retargetTimer: number;
@@ -51,7 +52,7 @@ export class Walker extends Entity {
     this.speed = this.baseSpeed + (Math.random() - 0.5) * this.baseSpeed * 0.4;
     
     this.targetPosition = new Vector2(x, y);
-    this._size = 8 + Math.random() * 8; // Random size between 8-16 pixels
+    this.size = 8 + Math.random() * 8; // Random size between 8-16 pixels
     this.canvasWidth = canvasWidth;
     this.canvasHeight = canvasHeight;
     this.retargetTimer = 0;
@@ -68,10 +69,10 @@ export class Walker extends Entity {
   private setRandomTarget(): void {
     // Set a random target position within canvas bounds
     this.targetPosition = Vector2.random(
-      this._size, 
-      this.canvasWidth - this._size,
-      this._size, 
-      this.canvasHeight - this._size
+      this.size, 
+      this.canvasWidth - this.size,
+      this.size, 
+      this.canvasHeight - this.size
     );
   }
 
@@ -114,30 +115,9 @@ export class Walker extends Entity {
       this.walkAnimation.pause();
     }
     this.walkAnimation.update(deltaTime);
-
-    // Keep walker within bounds
-    this.keepInBounds();
   }
 
-  private keepInBounds(): void {
-    const margin = this._size / 2;
-    
-    if (this.position.x < margin) {
-      this.position.x = margin;
-      this.setRandomTarget();
-    } else if (this.position.x > this.canvasWidth - margin) {
-      this.position.x = this.canvasWidth - margin;
-      this.setRandomTarget();
-    }
-    
-    if (this.position.y < margin) {
-      this.position.y = margin;
-      this.setRandomTarget();
-    } else if (this.position.y > this.canvasHeight - margin) {
-      this.position.y = this.canvasHeight - margin;
-      this.setRandomTarget();
-    }
-  }
+
 
   render(ctx: CanvasRenderingContext2D): void {
     if (!this.active) return;
@@ -145,13 +125,13 @@ export class Walker extends Entity {
     ctx.save();
     
     // Render animated sprite
-    this.walkAnimation.render(ctx, this.position.x, this.position.y, this._size, this._size);
+    this.walkAnimation.render(ctx, this.position.x, this.position.y, this.size, this.size);
     
     // Draw health bar for walkers with more than 1 max health
     if (this._maxHealth > 1) {
-      const healthBarWidth = this._size;
+      const healthBarWidth = this.size;
       const healthBarHeight = 3;
-      const healthBarY = this.position.y - this._size / 2 - 6;
+      const healthBarY = this.position.y - this.size / 2 - 6;
       
       // Background
       ctx.fillStyle = '#333';
@@ -191,16 +171,11 @@ export class Walker extends Entity {
   }
 
   private isTargetInBounds(): boolean {
-    const margin = this._size / 2;
+    const margin = this.size / 2;
     return this.targetPosition.x >= margin && 
            this.targetPosition.x <= this.canvasWidth - margin &&
            this.targetPosition.y >= margin && 
            this.targetPosition.y <= this.canvasHeight - margin;
-  }
-
-  // Getter for size (needed for collision detection)
-  get size(): number {
-    return this._size;
   }
 
   // Health management

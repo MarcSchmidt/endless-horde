@@ -5,6 +5,7 @@ import { ObjectPool } from '../core/ObjectPool.ts';
 import { EntityCuller, CullableEntity } from '../core/EntityCuller.ts';
 // import { BatchRenderer } from '../core/BatchRenderer.ts';
 import { PerformanceMonitor } from '../core/PerformanceMonitor.ts';
+import { CollisionSystem } from '../core/CollisionSystem.ts';
 
 // Extend Walker to be cullable
 interface CullableWalker extends Walker, CullableEntity {}
@@ -23,6 +24,7 @@ export class WalkerSystem {
   private entityCuller: EntityCuller;
   // private batchRenderer: BatchRenderer;
   private performanceMonitor: PerformanceMonitor;
+  private collisionSystem: CollisionSystem;
 
   constructor(canvasWidth: number, canvasHeight: number, areaManager: AreaManager) {
     this.canvasWidth = canvasWidth;
@@ -33,6 +35,7 @@ export class WalkerSystem {
     this.entityCuller = EntityCuller.getInstance();
     // this.batchRenderer = BatchRenderer.getInstance();
     this.performanceMonitor = PerformanceMonitor.getInstance();
+    this.collisionSystem = CollisionSystem.getInstance();
     
     // Initialize object pool for walkers
     this.walkerPool = new ObjectPool<Walker>(
@@ -90,6 +93,17 @@ export class WalkerSystem {
         walker.update(deltaTime);
         walker.lastUpdateTime = performance.now();
       }
+    }
+
+    // Apply walker separation to prevent stacking (only for active walkers)
+    const activeWalkers = this.walkers.filter(w => w.active);
+    if (activeWalkers.length > 1) {
+      this.collisionSystem.applySeparation(activeWalkers, 30); // Moderate separation force
+    }
+
+    // Apply boundary collision for all active walkers
+    for (const walker of activeWalkers) {
+      this.collisionSystem.applyBoundaryCollision(walker, this.canvasWidth, this.canvasHeight, 80);
     }
   }
 
