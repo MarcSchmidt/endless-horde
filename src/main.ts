@@ -11,6 +11,7 @@ import { AssetManager } from './core/AssetManager.ts';
 import { Animation } from './core/Animation.ts';
 import { VisualEffects } from './core/VisualEffects.ts';
 import { HUD } from './ui/HUD.ts';
+import { PerformanceMonitor, PerformanceLevel } from './core/PerformanceMonitor.ts';
 
 class Game {
   private canvas: HTMLCanvasElement;
@@ -46,6 +47,7 @@ class Game {
   private assetManager!: AssetManager;
   private visualEffects!: VisualEffects;
   private hud!: HUD;
+  private performanceMonitor!: PerformanceMonitor;
 
   constructor() {
     this.canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
@@ -124,6 +126,15 @@ class Game {
   private initializeSystems(): void {
     const canvasWidth = this.canvas.width / this.devicePixelRatio;
     const canvasHeight = this.canvas.height / this.devicePixelRatio;
+    
+    // Initialize performance monitor first
+    this.performanceMonitor = PerformanceMonitor.getInstance();
+    
+    // Set up performance level change callback
+    this.performanceMonitor.onPerformanceLevelChange((level: PerformanceLevel) => {
+      console.log(`Performance level changed to: ${level}`);
+      this.handlePerformanceLevelChange(level);
+    });
     
     // Initialize managers first
     this.saveManager = new SaveManager();
@@ -221,6 +232,11 @@ class Game {
       this.frameCount = 0;
       this.fpsLastTime = currentTime;
     }
+    
+    // Update performance monitor with current metrics
+    const totalEntities = this.walkerSystem.getWalkerCount() + this.zombieSystem.getZombieCount();
+    const particleCount = this.visualEffects.getParticleCount();
+    this.performanceMonitor.updateMetrics(currentTime, totalEntities, particleCount);
   }
 
   private update(deltaTime: number): void {
@@ -355,7 +371,7 @@ class Game {
     // Position FPS counter in top-left
     this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'top';
-    this.ctx.font = '16px Arial';
+    this.ctx.font = '14px Arial';
     
     // Color code FPS: Green >50, Yellow 30-50, Red <30
     if (this.fps >= 50) {
@@ -366,7 +382,14 @@ class Game {
       this.ctx.fillStyle = '#ff0000';
     }
     
+    const metrics = this.performanceMonitor.getMetrics();
+    const performanceLevel = this.performanceMonitor.getPerformanceLevel();
+    
     this.ctx.fillText(`FPS: ${this.fps}`, 10, 10);
+    this.ctx.fillText(`Frame: ${metrics.frameTime.toFixed(1)}ms`, 10, 28);
+    this.ctx.fillText(`Level: ${performanceLevel.toUpperCase()}`, 10, 46);
+    this.ctx.fillText(`Entities: ${metrics.entityCount}`, 10, 64);
+    this.ctx.fillText(`Particles: ${metrics.particleCount}`, 10, 82);
     
     this.ctx.restore();
   }
@@ -401,6 +424,22 @@ class Game {
     this.ctx.fillText('Click/tap to spawn zombies', 10, canvasHeight - 10);
     
     this.ctx.restore();
+  }
+
+  // Handle performance level changes
+  private handlePerformanceLevelChange(level: PerformanceLevel): void {
+    switch (level) {
+      case PerformanceLevel.LOW:
+        console.log('Switching to low performance mode - reducing visual effects');
+        // Additional low-performance optimizations could go here
+        break;
+      case PerformanceLevel.MEDIUM:
+        console.log('Switching to medium performance mode - moderate optimizations');
+        break;
+      case PerformanceLevel.HIGH:
+        console.log('Switching to high performance mode - full visual effects');
+        break;
+    }
   }
 
   // Load game state from save manager

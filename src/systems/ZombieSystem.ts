@@ -5,15 +5,28 @@ import { Vector2 } from '../core/Vector2.ts';
 import { ResourceManager } from '../managers/ResourceManager.ts';
 import { UpgradeManager } from '../managers/UpgradeManager.ts';
 import { AreaManager } from '../managers/AreaManager.ts';
+import { ObjectPool } from '../core/ObjectPool.ts';
+import { EntityCuller, CullableEntity } from '../core/EntityCuller.ts';
+// import { BatchRenderer } from '../core/BatchRenderer.ts';
+import { PerformanceMonitor } from '../core/PerformanceMonitor.ts';
+
+// Extend Zombie to be cullable
+interface CullableZombie extends Zombie, CullableEntity {}
 
 export class ZombieSystem {
-  private zombies: Zombie[] = [];
+  private zombies: CullableZombie[] = [];
   private canvasWidth: number;
   private canvasHeight: number;
   private resourceManager: ResourceManager;
   private upgradeManager: UpgradeManager;
   private areaManager: AreaManager;
   private onWalkerDefeated?: (x: number, y: number, color: string) => void;
+  
+  // Performance optimization components
+  private zombiePool: ObjectPool<Zombie>;
+  private entityCuller: EntityCuller;
+  // private batchRenderer: BatchRenderer;
+  private performanceMonitor: PerformanceMonitor;
 
   constructor(canvasWidth: number, canvasHeight: number, resourceManager: ResourceManager, upgradeManager: UpgradeManager, areaManager: AreaManager) {
     this.canvasWidth = canvasWidth;
@@ -21,30 +34,72 @@ export class ZombieSystem {
     this.resourceManager = resourceManager;
     this.upgradeManager = upgradeManager;
     this.areaManager = areaManager;
+    
+    // Initialize performance optimization components
+    this.entityCuller = EntityCuller.getInstance();
+    // this.batchRenderer = BatchRenderer.getInstance();
+    this.performanceMonitor = PerformanceMonitor.getInstance();
+    
+    // Initialize object pool for zombies
+    this.zombiePool = new ObjectPool<Zombie>(
+      () => new Zombie(0, 0, this.canvasWidth, this.canvasHeight, this.upgradeManager.getZombieSpeedMultiplier()),
+      (zombie: Zombie) => {
+        // Reset zombie state
+        zombie.active = true;
+        zombie.position.set(0, 0);
+        zombie.velocity.set(0, 0);
+        zombie.updateSpeed(this.upgradeManager.getZombieSpeedMultiplier());
+      },
+      5,  // Initial pool size
+      20  // Max pool size
+    );
   }
 
   update(deltaTime: number, walkers: Walker[]): void {
-    // Update all active zombies
+    // Cull zombies based on performance and viewport
+    const culledZombies = this.entityCuller.cullEntities(
+      this.zombies, 
+      this.canvasWidth, 
+      this.canvasHeight
+    );
+
+    // Update active zombies with performance-based skipping
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const zombie = this.zombies[i];
       
-      if (zombie.active) {
+      if (!zombie.active) {
+        // Return inactive zombie to pool and remove from array
+        this.zombiePool.release(zombie);
+        this.zombies.splice(i, 1);
+        continue;
+      }
+      
+      // Check if this zombie is in the culled list (should be updated)
+      const shouldUpdate = culledZombies.includes(zombie);
+      
+      if (shouldUpdate && !this.entityCuller.shouldSkipUpdate(zombie, this.canvasWidth, this.canvasHeight)) {
         zombie.updateWithWalkers(deltaTime, walkers);
+        zombie.lastUpdateTime = performance.now();
         
         // Check for collisions with walkers
         this.checkCollisions(zombie, walkers);
-      } else {
-        // Remove inactive zombies
-        this.zombies.splice(i, 1);
       }
     }
   }
 
   render(ctx: CanvasRenderingContext2D): void {
-    // Render all active zombies
+    // Use batch rendering for better performance
+    // const batchKey = 'zombies';
+    
+    // Add all visible zombies to batch
     for (const zombie of this.zombies) {
       if (zombie.active) {
+        // For now, still render individually since zombies have complex animations
+        // In a future optimization, we could batch static sprites
         zombie.render(ctx);
+        
+        // Track render call
+        this.performanceMonitor.incrementRenderCalls();
       }
     }
   }
@@ -62,8 +117,14 @@ export class ZombieSystem {
     const clampedX = Math.max(margin, Math.min(this.canvasWidth - margin, position.x));
     const clampedY = Math.max(margin, Math.min(this.canvasHeight - margin, position.y));
 
-    const speedMultiplier = this.upgradeManager.getZombieSpeedMultiplier();
-    const zombie = new Zombie(clampedX, clampedY, this.canvasWidth, this.canvasHeight, speedMultiplier);
+    // Get zombie from pool
+    const zombie = this.zombiePool.get() as CullableZombie;
+    zombie.position.set(clampedX, clampedY);
+    zombie.updateCanvasDimensions(this.canvasWidth, this.canvasHeight);
+    
+    // Set zombie priority (player-controlled entities have high priority)
+    this.entityCuller.setEntityPriority(zombie, 0.8);
+    
     this.zombies.push(zombie);
     return true;
   }
@@ -120,6 +181,7 @@ export class ZombieSystem {
   clear(): void {
     for (const zombie of this.zombies) {
       zombie.destroy();
+      this.zombiePool.release(zombie);
     }
     this.zombies = [];
   }
