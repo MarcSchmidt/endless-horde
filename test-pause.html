@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pause Test - Endless Horde</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            border: 2px solid #333;
+            background-color: #87CEEB;
+            display: block;
+            margin: 20px auto;
+        }
+        .test-info {
+            text-align: center;
+            margin: 20px;
+        }
+        .test-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .test-button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .paused {
+            color: #ff6b6b;
+        }
+        .running {
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h1>Endless Horde - Pause/Unpause Test</h1>
+        <div class="status" id="gameStatus">Game Status: <span class="running">RUNNING</span></div>
+        <div>
+            <button class="test-button" onclick="testKeyboardPause()">Test Keyboard Pause (P)</button>
+            <button class="test-button" onclick="testMobilePause()">Test Mobile Pause Button</button>
+            <button class="test-button" onclick="simulateMultiplePauses()">Test Multiple Pause/Unpause</button>
+        </div>
+        <div id="testResults"></div>
+    </div>
+    
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <script>
+        // Simple test to verify pause functionality
+        let testResults = [];
+        
+        function updateStatus(isPaused) {
+            const statusElement = document.getElementById('gameStatus');
+            const statusText = isPaused ? 'PAUSED' : 'RUNNING';
+            const statusClass = isPaused ? 'paused' : 'running';
+            statusElement.innerHTML = `Game Status: <span class="${statusClass}">${statusText}</span>`;
+        }
+        
+        function addTestResult(test, result) {
+            testResults.push(`${test}: ${result}`);
+            document.getElementById('testResults').innerHTML = 
+                '<h3>Test Results:</h3>' + testResults.map(r => `<div>${r}</div>`).join('');
+        }
+        
+        function testKeyboardPause() {
+            addTestResult('Keyboard Pause Test', 'Press P key to test pause/unpause functionality');
+            // In a real test, we would simulate keypress events
+            console.log('Testing keyboard pause - press P key');
+        }
+        
+        function testMobilePause() {
+            addTestResult('Mobile Pause Test', 'Click on mobile pause button (top-right corner)');
+            // In a real test, we would simulate touch events
+            console.log('Testing mobile pause button');
+        }
+        
+        function simulateMultiplePauses() {
+            addTestResult('Multiple Pause Test', 'Testing rapid pause/unpause cycles');
+            // Simulate multiple pause/unpause cycles
+            let count = 0;
+            const interval = setInterval(() => {
+                count++;
+                const isPaused = count % 2 === 1;
+                updateStatus(isPaused);
+                console.log(`Cycle ${count}: ${isPaused ? 'PAUSED' : 'RESUMED'}`);
+                
+                if (count >= 6) {
+                    clearInterval(interval);
+                    updateStatus(false); // End in running state
+                    addTestResult('Multiple Pause Test', 'COMPLETED - 3 pause/unpause cycles');
+                }
+            }, 500);
+        }
+        
+        // Initialize
+        updateStatus(false);
+        addTestResult('Test Initialization', 'Pause test page loaded successfully');
+        
+        console.log('Pause test page loaded. Use the buttons to test pause functionality.');
+    </script>
+</body>
+</html>

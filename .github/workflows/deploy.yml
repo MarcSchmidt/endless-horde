@@ -24,22 +24,11 @@ jobs:
     - name: Build
       run: npm run build
       
-    - name: Copy built files to root
-      if: github.ref == 'refs/heads/main'
-      run: |
-        # Remove existing built files from root (but keep source files)
-        rm -f index.html
-        rm -rf assets
-        # Copy built files from dist to root
-        cp -r dist/* .
-        # Clean up dist folder
-        rm -rf dist
-        
-    - name: Commit and push built files
+    - name: Commit and push built files to docs/
       if: github.ref == 'refs/heads/main'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add index.html assets vite.svg
-        git diff --staged --quiet || git commit -m "Deploy built files to root for GitHub Pages"
+        git add docs/
+        git diff --staged --quiet || git commit -m "Deploy built files to docs/ for GitHub Pages"
         git push

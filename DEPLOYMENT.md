@@ -20,8 +20,7 @@ The project is configured for automatic deployment to GitHub Pages:
 2. Setup Node.js 18
 3. Install dependencies (npm ci)
 4. Build project (npm run build)
-5. Copy built files to repository root
-6. Commit and push built files
+5. Commit and push built files to docs/ folder
 ```
 
 ### Manual Deployment
@@ -32,8 +31,8 @@ For other hosting platforms:
 # 1. Build the project
 npm run build
 
-# 2. Deploy the dist/ folder contents to your web server
-# The built files will be in the dist/ directory
+# 2. Deploy the docs/ folder contents to your web server
+# The built files will be in the docs/ directory
 ```
 
 ## 🔧 Build Configuration
@@ -47,15 +46,8 @@ The project uses Vite for building with the following optimizations:
 export default defineConfig({
   base: './',  // Relative paths for GitHub Pages
   build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    sourcemap: false,  // Disabled for production
-    minify: 'terser',  // Optimized minification
-    rollupOptions: {
-      output: {
-        manualChunks: undefined  // Single bundle for simplicity
-      }
-    }
+    outDir: 'docs',
+    emptyOutDir: true,
   }
 })
 ```
@@ -65,12 +57,11 @@ export default defineConfig({
 After running `npm run build`, you'll get:
 
 ```
-dist/
+docs/
 ├── index.html          # Main HTML file
 ├── assets/
 │   ├── index-[hash].js # Bundled JavaScript
-│   └── vite-[hash].svg # Game icon
-└── vite.svg           # Favicon
+└── vite.svg           # Game icon
 ```
 
 ## 🌐 Platform-Specific Deployment
@@ -80,7 +71,7 @@ dist/
 **Automatic Setup:**
 1. Fork/clone the repository
 2. Enable GitHub Pages in repository settings
-3. Set source to "Deploy from a branch" → "main" → "/ (root)"
+3. Set source to "Deploy from a branch" → "main" → "/docs"
 4. Push changes to main branch
 
 **Manual Setup:**
@@ -88,9 +79,8 @@ dist/
 # Build locally
 npm run build
 
-# Copy dist contents to root (for GitHub Pages)
-cp -r dist/* .
-git add .
+# The built files are automatically in docs/ folder
+git add docs/
 git commit -m "Deploy to GitHub Pages"
 git push origin main
 ```
@@ -100,7 +90,7 @@ git push origin main
 1. **Connect Repository**: Link your GitHub repository to Netlify
 2. **Build Settings**:
    - Build command: `npm run build`
-   - Publish directory: `dist`
+   - Publish directory: `docs`
 3. **Deploy**: Netlify will automatically build and deploy
 
 ### Vercel
@@ -118,7 +108,7 @@ For any static hosting service:
 # Build the project
 npm run build
 
-# Upload dist/ folder contents to your web server
+# Upload docs/ folder contents to your web server
 # Ensure index.html is served for the root path
 ```
 

@@ -359,19 +359,19 @@ class Game {
   private gameLoop(currentTime: number): void {
     this.animationId = requestAnimationFrame((time) => this.gameLoop(time));
     
-    const deltaTime = currentTime - this.lastTime;
-    this.lastTime = currentTime;
-    
-    // Update FPS counter
-    this.updateFPS(currentTime);
-    
     // Always update input manager so pause/unpause works
     this.inputManager.update();
     
-    // Always handle pause input, even when paused
-    this.handlePauseInput();
+    // Always handle all input, including pause - this handles both keyboard and mobile
+    this.handleAllInput();
     
     if (!this.isPaused) {
+      const deltaTime = currentTime - this.lastTime;
+      this.lastTime = currentTime;
+      
+      // Update FPS counter
+      this.updateFPS(currentTime);
+      
       // Fixed timestep update loop
       this.accumulator += deltaTime;
       
@@ -379,11 +379,17 @@ class Game {
         this.update(this.fixedTimeStep);
         this.accumulator -= this.fixedTimeStep;
       }
+      
+      // Render with interpolation
+      const interpolationFactor = this.accumulator / this.fixedTimeStep;
+      this.render(interpolationFactor);
+    } else {
+      // When paused, reset timing to prevent accumulation issues when resuming
+      this.lastTime = currentTime;
+      
+      // Still render to show pause overlay
+      this.render(0);
     }
-    
-    // Always render (even when paused)
-    const interpolationFactor = this.accumulator / this.fixedTimeStep;
-    this.render(interpolationFactor);
   }
 
   private updateFPS(currentTime: number): void {
@@ -402,9 +408,6 @@ class Game {
   }
 
   private update(deltaTime: number): void {
-    // Handle non-pause input (only when not paused)
-    this.handleGameInput();
-    
     // Check for area progression
     this.checkAreaProgression();
     
@@ -426,59 +429,70 @@ class Game {
     this.hud.update();
   }
 
-  private handlePauseInput(): void {
-    // Handle pause toggle (only on key press, not hold) - always active
+  private handleAllInput(): void {
+    // Handle pause toggle (keyboard) - always active
     const currentPauseKeyState = this.inputManager.isKeyPressed('p');
     if (currentPauseKeyState && !this.lastPauseKeyState) {
       this.togglePause();
     }
     this.lastPauseKeyState = currentPauseKeyState;
-  }
 
-  private handleGameInput(): void {
-    // Handle upgrade menu toggle
-    const currentUpgradeKeyState = this.inputManager.isKeyPressed('u');
-    if (currentUpgradeKeyState && !this.lastUpgradeKeyState) {
-      this.hud.toggleUpgradeMenu();
-    }
-    this.lastUpgradeKeyState = currentUpgradeKeyState;
-
-    // Handle reduced motion toggle
-    const currentMotionKeyState = this.inputManager.isKeyPressed('m');
-    if (currentMotionKeyState && !this.lastMotionKeyState) {
-      this.toggleReducedMotion();
-    }
-    this.lastMotionKeyState = currentMotionKeyState;
-
-    // Handle mouse/touch clicks
+    // Handle mouse/touch input - always check for pause button first
     if (this.inputManager.wasMouseJustPressed()) {
       const mousePos = this.inputManager.getMousePosition();
       
-      // Check mobile UI buttons first
+      // Check mobile UI buttons first - pause button works even when paused
       const mobileButtonPressed = this.mobileUI.handleTouch(mousePos);
-      if (mobileButtonPressed) {
-        this.handleMobileButtonPress(mobileButtonPressed);
-        return; // Don't process other clicks
+      if (mobileButtonPressed === 'pause') {
+        this.togglePause();
+        return; // Don't process other input when pause is pressed
       }
       
-      // Check if click was on upgrade menu
-      if (this.hud.isUpgradeMenuOpen()) {
-        const upgradeClicked = this.hud.handleClick(mousePos);
-        if (!upgradeClicked) {
-          // Click wasn't on an upgrade button, could close menu or ignore
+      // Only handle other input when not paused
+      if (!this.isPaused) {
+        if (mobileButtonPressed && mobileButtonPressed !== 'pause') {
+          this.handleMobileButtonPress(mobileButtonPressed);
+          return; // Don't process other clicks
         }
-      } else {
-        // Normal zombie spawning
-        const success = this.zombieSystem.spawnZombie(mousePos);
-        if (success) {
-          this.accessibilityManager.announceMobileAction('zombie-spawned');
+        
+        // Check if click was on upgrade menu
+        if (this.hud.isUpgradeMenuOpen()) {
+          const upgradeClicked = this.hud.handleClick(mousePos);
+          if (!upgradeClicked) {
+            // Click wasn't on an upgrade button, could close menu or ignore
+          }
         } else {
-          console.log('Cannot spawn more zombies - limit reached!');
-          this.accessibilityManager.announceMobileAction('zombie-limit-reached');
+          // Normal zombie spawning
+          const success = this.zombieSystem.spawnZombie(mousePos);
+          if (success) {
+            this.accessibilityManager.announceMobileAction('zombie-spawned');
+          } else {
+            console.log('Cannot spawn more zombies - limit reached!');
+            this.accessibilityManager.announceMobileAction('zombie-limit-reached');
+          }
         }
       }
     }
+
+    // Handle other keyboard input only when not paused
+    if (!this.isPaused) {
+      // Handle upgrade menu toggle
+      const currentUpgradeKeyState = this.inputManager.isKeyPressed('u');
+      if (currentUpgradeKeyState && !this.lastUpgradeKeyState) {
+        this.hud.toggleUpgradeMenu();
+      }
+      this.lastUpgradeKeyState = currentUpgradeKeyState;
+
+      // Handle reduced motion toggle
+      const currentMotionKeyState = this.inputManager.isKeyPressed('m');
+      if (currentMotionKeyState && !this.lastMotionKeyState) {
+        this.toggleReducedMotion();
+      }
+      this.lastMotionKeyState = currentMotionKeyState;
+    }
   }
+
+
 
   private render(_interpolationFactor: number): void {
     const canvasWidth = this.canvas.width / this.devicePixelRatio;
