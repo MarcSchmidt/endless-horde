@@ -146,6 +146,12 @@ class Game {
     // Update FPS counter
     this.updateFPS(currentTime);
     
+    // Always update input manager so pause/unpause works
+    this.inputManager.update();
+    
+    // Always handle pause input, even when paused
+    this.handlePauseInput();
+    
     if (!this.isPaused) {
       // Fixed timestep update loop
       this.accumulator += deltaTime;
@@ -172,11 +178,8 @@ class Game {
   }
 
   private update(deltaTime: number): void {
-    // Update input manager
-    this.inputManager.update();
-    
-    // Handle input
-    this.handleInput();
+    // Handle non-pause input (only when not paused)
+    this.handleGameInput();
     
     // Check for area progression
     this.checkAreaProgression();
@@ -192,14 +195,16 @@ class Game {
     this.hud.update();
   }
 
-  private handleInput(): void {
-    // Handle pause toggle (only on key press, not hold)
+  private handlePauseInput(): void {
+    // Handle pause toggle (only on key press, not hold) - always active
     const currentPauseKeyState = this.inputManager.isKeyPressed('p');
     if (currentPauseKeyState && !this.lastPauseKeyState) {
       this.togglePause();
     }
     this.lastPauseKeyState = currentPauseKeyState;
+  }
 
+  private handleGameInput(): void {
     // Handle upgrade menu toggle
     const currentUpgradeKeyState = this.inputManager.isKeyPressed('u');
     if (currentUpgradeKeyState && !this.lastUpgradeKeyState) {
